@@ -21,8 +21,24 @@ export function Login() {
 
     try {
       await login(email, password)
-    } catch (err) {
-      setError('Invalid email or password')
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Invalid email or password')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Quick login for development/testing
+  const quickLogin = async (role: string, testEmail: string) => {
+    setEmail(testEmail)
+    setPassword('password')
+    setIsLoading(true)
+    setError('')
+
+    try {
+      await login(testEmail, 'password')
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Login failed')
     } finally {
       setIsLoading(false)
     }
@@ -102,6 +118,53 @@ export function Login() {
               )}
             </Button>
           </form>
+
+          {/* Development Quick Login Buttons */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-6 pt-6 border-t border-border">
+              <p className="text-center text-sm text-muted-foreground mb-4">
+                Quick Login (Development)
+              </p>
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => quickLogin('admin', 'alice@admin.com')}
+                  disabled={isLoading}
+                >
+                  Login as Admin (Alice)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => quickLogin('team', 'bob@team.com')}
+                  disabled={isLoading}
+                >
+                  Login as Team Member (Bob)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => quickLogin('consultant', 'john@consulting.com')}
+                  disabled={isLoading}
+                >
+                  Login as Consultant (John)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => quickLogin('client', 'jane@client.com')}
+                  disabled={isLoading}
+                >
+                  Login as Client (Jane)
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
             <p>Demo credentials:</p>

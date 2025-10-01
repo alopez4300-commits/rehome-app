@@ -5,6 +5,11 @@ export default defineConfig({
   plugins: [react()],
   root: 'resources/react',
   base: '/app/',
+  resolve: {
+    alias: {
+      '@': '/src',
+    },
+  },
   build: {
     outDir: '../../public/app',
     emptyOutDir: true,

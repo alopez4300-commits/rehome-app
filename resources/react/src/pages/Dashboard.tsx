@@ -42,8 +42,8 @@ export function Dashboard() {
           const data = await response.json()
           console.log('Workspaces API response:', data)
           
-          // Extract workspaces array from the correct path
-          const workspacesData = data.data?.workspaces || []
+          // Extract workspaces array from the correct path - handle multiple possible structures
+          const workspacesData = data.data?.workspaces || data.workspaces || data || []
           if (Array.isArray(workspacesData)) {
             setWorkspaces(workspacesData)
           } else {

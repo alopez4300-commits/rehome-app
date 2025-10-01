@@ -9,7 +9,7 @@ export default defineConfig({
             input: [
                 'resources/css/app.css', 
                 'resources/js/app.js',
-                'frontend/src/main.tsx'
+                'resources/react/src/main.tsx'
             ],
             refresh: true,
         }),
@@ -17,7 +17,7 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
-            '@': path.resolve(__dirname, 'frontend/src'),
+            '@': path.resolve(__dirname, 'resources/react/src'),
         },
     },
 });
