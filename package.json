@@ -1,17 +1,34 @@
 {
-    "$schema": "https://json.schemastore.org/package.json",
-    "private": true,
-    "type": "module",
-    "scripts": {
-        "build": "vite build",
-        "dev": "vite"
-    },
-    "devDependencies": {
-        "@tailwindcss/vite": "^4.0.0",
-        "axios": "^1.11.0",
-        "concurrently": "^9.0.1",
-        "laravel-vite-plugin": "^2.0.0",
-        "tailwindcss": "^4.0.0",
-        "vite": "^7.0.7"
-    }
+  "name": "rehome-v2",
+  "version": "2.0.0",
+  "description": "AI-Centered Project Management Platform - Laravel 11 + Filament v3",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run be\" \"npm run fe\"",
+    "be": "php artisan serve --host=0.0.0.0 --port=8000",
+    "fe": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "composer run-script test",
+    "test:frontend": "cd frontend && npm run test",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "composer run-script lint",
+    "lint:frontend": "cd frontend && npm run lint",
+    "typecheck": "npm run typecheck:backend && npm run typecheck:frontend",
+    "typecheck:backend": "composer run-script typecheck",
+    "typecheck:frontend": "cd frontend && npm run typecheck",
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run build",
+    "setup": "npm run setup:backend && npm run setup:frontend",
+    "setup:backend": "composer install && php artisan key:generate && php artisan migrate --force && php artisan db:seed --force",
+    "setup:frontend": "cd frontend && npm install",
+    "fresh": "npm run setup && docker-compose up -d"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "php": ">=8.3.0"
+  }
 }

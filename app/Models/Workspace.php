@@ -9,7 +9,11 @@ class Workspace extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'owner_id'];
+    protected $fillable = [
+        'name',
+        'description',
+        'owner_id',
+    ];
 
     /**
      * The workspace owner

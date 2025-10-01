@@ -9,7 +9,15 @@ class Project extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'status', 'workspace_id'];
+    protected $fillable = [
+        'name',
+        'description',
+        'workspace_id',
+        'created_by',
+        'status',
+        'start_date',
+        'end_date',
+    ];
 
     /**
      * The workspace this project belongs to
@@ -17,5 +25,13 @@ class Project extends Model
     public function workspace()
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    /**
+     * The user who created this project
+     */
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }
