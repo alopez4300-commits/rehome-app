@@ -13,6 +13,11 @@ class ProjectPolicy
      */
     public function viewAny(User $user): bool
     {
+        // Admin can view all projects
+        if ($user->isAdmin()) {
+            return true;
+        }
+        
         // Users can view projects if they belong to any workspace
         return $user->workspaces()->exists();
     }
@@ -22,6 +27,11 @@ class ProjectPolicy
      */
     public function view(User $user, Project $project): bool
     {
+        // Admin can view all projects
+        if ($user->isAdmin()) {
+            return true;
+        }
+        
         // Users can view projects in workspaces they belong to
         return $user->workspaces()
             ->where('workspaces.id', $project->workspace_id)
@@ -44,6 +54,11 @@ class ProjectPolicy
      */
     public function update(User $user, Project $project): bool
     {
+        // Admin can update all projects
+        if ($user->isAdmin()) {
+            return true;
+        }
+        
         // Users can update projects if they are owner or member of the workspace
         return $user->workspaces()
             ->where('workspaces.id', $project->workspace_id)

@@ -97,6 +97,44 @@ else
     print_warn "Filament not installed"
 fi
 
+# Check MyHome system
+print_header "MyHome System"
+if [ -d "app/Services/MyHome" ]; then
+    print_pass "MyHome services directory exists"
+else
+    print_fail "MyHome services directory not found"
+fi
+
+if [ -f "app/Services/MyHome/MyHomeService.php" ]; then
+    print_pass "MyHomeService exists"
+else
+    print_fail "MyHomeService not found"
+fi
+
+if [ -f "app/Services/MyHome/MyHomeQueryService.php" ]; then
+    print_pass "MyHomeQueryService exists"
+else
+    print_fail "MyHomeQueryService not found"
+fi
+
+if [ -d "app/Services/Agent" ]; then
+    print_pass "AI Agent services directory exists"
+else
+    print_fail "AI Agent services directory not found"
+fi
+
+if [ -f "app/Services/Agent/AgentService.php" ]; then
+    print_pass "AgentService exists"
+else
+    print_fail "AgentService not found"
+fi
+
+if [ -f "config/ai.php" ]; then
+    print_pass "AI configuration exists"
+else
+    print_fail "AI configuration not found"
+fi
+
 # Check admin user
 print_header "Admin User"
 if php artisan tinker --execute="echo App\Models\User::where('has_admin_role', true)->count();" 2>/dev/null | grep -q "1"; then

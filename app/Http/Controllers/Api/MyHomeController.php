@@ -5,169 +5,343 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Project;
 use App\Services\MyHome\MyHomeService;
+use App\Services\MyHome\MyHomeQueryService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 
 class MyHomeController extends Controller
 {
-    public function __construct(
-        private MyHomeService $myHomeService
-    ) {}
+    private MyHomeService $myHomeService;
+    private MyHomeQueryService $queryService;
+
+    public function __construct(MyHomeService $myHomeService, MyHomeQueryService $queryService)
+    {
+        $this->myHomeService = $myHomeService;
+        $this->queryService = $queryService;
+    }
 
     /**
-     * List MyHome entries for a project
-     * GET /api/projects/{project}/myhome
+     * Get activity feed for a project
      */
-    public function index(Request $request, Project $project): JsonResponse
+    public function getFeed(Request $request, Project $project): JsonResponse
     {
-        $this->authorize('accessMyHome', $project);
+        $this->authorize('view', $project);
 
-        $limit = $request->integer('limit', 50);
-        $kind = $request->string('kind');
+        $limit = $request->get('limit', 50);
+        $offset = $request->get('offset', 0);
 
-        if ($kind->isNotEmpty()) {
-            $entries = $this->myHomeService->getByKind($project, $kind->toString());
-        } else {
-            $entries = $this->myHomeService->read($project, $limit);
-        }
+        $feed = $this->queryService->getActivityFeed($project, $limit, $offset);
 
         return response()->json([
             'success' => true,
-            'data' => $entries,
-            'meta' => [
-                'project_id' => $project->id,
-                'project_name' => $project->name,
-                'workspace_id' => $project->workspace_id,
-                'total_entries' => $entries->count(),
-            ]
+            'data' => $feed
         ]);
     }
 
     /**
-     * Add a new MyHome entry
-     * POST /api/projects/{project}/myhome
+     * Create a new note
      */
-    public function store(Request $request, Project $project): JsonResponse
+    public function createNote(Request $request, Project $project): JsonResponse
     {
-        $this->authorize('addToMyHome', $project);
+        $this->authorize('update', $project);
 
-        $validated = $request->validate([
-            'kind' => 'required|string|max:50',
-            'content' => 'nullable|string',
-            'metadata' => 'nullable|array',
+        $validator = Validator::make($request->all(), [
+            'text' => 'required|string|max:5000',
         ]);
 
-        $entry = $this->myHomeService->append(
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $entry = $this->myHomeService->createNote(
             $project,
-            $request->user(),
-            $validated
+            Auth::user(),
+            $request->input('text')
         );
 
         return response()->json([
             'success' => true,
-            'data' => $entry,
-            'message' => 'Entry added to MyHome successfully'
+            'data' => $entry
+        ], 201);
+    }
+
+    /**
+     * Create a new task
+     */
+    public function createTask(Request $request, Project $project): JsonResponse
+    {
+        $this->authorize('update', $project);
+
+        $validator = Validator::make($request->all(), [
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string|max:5000',
+            'due' => 'nullable|date',
+            'status' => 'nullable|string|in:pending,in_progress,completed',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $entry = $this->myHomeService->createTask(
+            $project,
+            Auth::user(),
+            $request->input('title'),
+            $request->input('description'),
+            $request->input('due'),
+            $request->input('status', 'pending')
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $entry
+        ], 201);
+    }
+
+    /**
+     * Create a time log entry
+     */
+    public function createTimeLog(Request $request, Project $project): JsonResponse
+    {
+        $this->authorize('update', $project);
+
+        $validator = Validator::make($request->all(), [
+            'hours' => 'required|numeric|min:0.1|max:24',
+            'task' => 'required|string|max:255',
+            'description' => 'nullable|string|max:5000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $entry = $this->myHomeService->createTimeLog(
+            $project,
+            Auth::user(),
+            $request->input('hours'),
+            $request->input('task'),
+            $request->input('description')
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $entry
         ], 201);
     }
 
     /**
      * Search MyHome entries
-     * GET /api/projects/{project}/myhome/search
      */
     public function search(Request $request, Project $project): JsonResponse
     {
-        $this->authorize('accessMyHome', $project);
+        $this->authorize('view', $project);
 
-        $request->validate([
-            'q' => 'required|string|min:2',
+        $validator = Validator::make($request->all(), [
+            'query' => 'required|string|min:2|max:255',
+            'kind' => 'nullable|string',
+            'author' => 'nullable|integer',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
         ]);
 
-        $query = $request->string('q');
-        $entries = $this->myHomeService->search($project, $query->toString());
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $filters = $request->only(['query', 'kind', 'author', 'date_from', 'date_to']);
+        $results = $this->queryService->advancedSearch($project, $filters);
 
         return response()->json([
             'success' => true,
-            'data' => $entries,
-            'meta' => [
-                'query' => $query,
-                'results_count' => $entries->count(),
-                'project_id' => $project->id,
-            ]
+            'data' => $results
         ]);
     }
 
     /**
-     * Add a comment entry (convenience method)
-     * POST /api/projects/{project}/myhome/comment
+     * Get project statistics
      */
-    public function addComment(Request $request, Project $project): JsonResponse
+    public function getStats(Project $project): JsonResponse
     {
-        $this->authorize('addToMyHome', $project);
+        $this->authorize('view', $project);
 
-        $request->validate([
-            'content' => 'required|string|max:2000',
-        ]);
-
-        $entry = $this->myHomeService->addComment(
-            $project,
-            $request->user(),
-            $request->string('content')->toString()
-        );
+        $stats = $this->myHomeService->getStats($project);
 
         return response()->json([
             'success' => true,
-            'data' => $entry,
-            'message' => 'Comment added successfully'
-        ], 201);
+            'data' => $stats
+        ]);
     }
 
     /**
-     * Add a status change entry (convenience method)
-     * POST /api/projects/{project}/myhome/status
+     * Get recent activity summary
      */
-    public function addStatusChange(Request $request, Project $project): JsonResponse
+    public function getRecentActivity(Project $project): JsonResponse
     {
-        $this->authorize('addToMyHome', $project);
+        $this->authorize('view', $project);
 
-        $request->validate([
-            'old_status' => 'required|string',
-            'new_status' => 'required|string',
-        ]);
-
-        $entry = $this->myHomeService->addStatusChange(
-            $project,
-            $request->user(),
-            $request->string('old_status')->toString(),
-            $request->string('new_status')->toString()
-        );
+        $days = request()->get('days', 7);
+        $summary = $this->queryService->getRecentActivitySummary($project, $days);
 
         return response()->json([
             'success' => true,
-            'data' => $entry,
-            'message' => 'Status change recorded successfully'
-        ], 201);
+            'data' => $summary
+        ]);
     }
 
     /**
-     * Get recent activity across accessible projects
-     * GET /api/myhome/activity
+     * Get project health metrics
      */
-    public function activity(Request $request): JsonResponse
+    public function getProjectHealth(Project $project): JsonResponse
     {
-        $limit = $request->integer('limit', 25);
-        
-        $entries = $this->myHomeService->getRecentActivity(
-            $request->user(),
-            $limit
-        );
+        $this->authorize('view', $project);
+
+        $health = $this->queryService->getProjectHealth($project);
 
         return response()->json([
             'success' => true,
-            'data' => $entries,
-            'meta' => [
-                'total_entries' => $entries->count(),
-                'user_id' => $request->user()->id,
-            ]
+            'data' => $health
+        ]);
+    }
+
+    /**
+     * Get tasks for a project
+     */
+    public function getTasks(Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $tasks = $this->myHomeService->getTasks($project);
+
+        return response()->json([
+            'success' => true,
+            'data' => $tasks
+        ]);
+    }
+
+    /**
+     * Get time logs for a project
+     */
+    public function getTimeLogs(Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $timeLogs = $this->myHomeService->getTimeLogs($project);
+
+        return response()->json([
+            'success' => true,
+            'data' => $timeLogs
+        ]);
+    }
+
+    /**
+     * Get files for a project
+     */
+    public function getFiles(Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $files = $this->myHomeService->getFiles($project);
+
+        return response()->json([
+            'success' => true,
+            'data' => $files
+        ]);
+    }
+
+    /**
+     * Get AI interactions for a project
+     */
+    public function getAIInteractions(Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $interactions = $this->myHomeService->getAIInteractions($project);
+
+        return response()->json([
+            'success' => true,
+            'data' => $interactions
+        ]);
+    }
+
+    /**
+     * Get timeline for a project
+     */
+    public function getTimeline(Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $limit = request()->get('limit', 100);
+        $timeline = $this->queryService->getTimeline($project, $limit);
+
+        return response()->json([
+            'success' => true,
+            'data' => $timeline
+        ]);
+    }
+
+    /**
+     * Get entries by kind
+     */
+    public function getByKind(Request $request, Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $validator = Validator::make($request->all(), [
+            'kind' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $entries = $this->myHomeService->getByKind($project, $request->input('kind'));
+
+        return response()->json([
+            'success' => true,
+            'data' => $entries
+        ]);
+    }
+
+    /**
+     * Get entries by author
+     */
+    public function getByAuthor(Request $request, Project $project): JsonResponse
+    {
+        $this->authorize('view', $project);
+
+        $validator = Validator::make($request->all(), [
+            'author_id' => 'required|integer',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $entries = $this->queryService->getByAuthor($project, $request->input('author_id'));
+
+        return response()->json([
+            'success' => true,
+            'data' => $entries
         ]);
     }
 }

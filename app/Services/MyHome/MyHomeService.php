@@ -6,46 +6,49 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class MyHomeService
 {
     /**
-     * Append an entry to a project's MyHome stream
+     * Append a new entry to the MyHome activity log
      */
     public function append(Project $project, User $user, array $entry): array
     {
-        $timestamp = Carbon::now()->toISOString();
-        
-        $myHomeEntry = [
-            'id' => $this->generateEntryId(),
-            'timestamp' => $timestamp,
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'project_id' => $project->id,
-            'workspace_id' => $project->workspace_id,
-            ...$entry, // Merge user-provided data
-        ];
+        $entry = array_merge([
+            'ts' => Carbon::now()->toISOString(),
+            'author' => $user->id,
+            'author_name' => $user->name,
+        ], $entry);
 
-        // Ensure project directory structure exists
-        $this->ensureProjectStructure($project);
+        $filePath = $this->getMyHomeFilePath($project);
+        $directory = dirname($filePath);
 
-        // Get the MyHome file path
-        $filePath = $this->getMyHomePath($project);
+        // Ensure directory exists
+        if (!Storage::exists($directory)) {
+            Storage::makeDirectory($directory);
+        }
 
         // Append to NDJSON file
-        $jsonLine = json_encode($myHomeEntry, JSON_UNESCAPED_SLASHES) . "\n";
-        Storage::append($filePath, $jsonLine);
+        $line = json_encode($entry) . "\n";
+        Storage::append($filePath, $line);
 
-        return $myHomeEntry;
+        Log::info('MyHome entry added', [
+            'project_id' => $project->id,
+            'user_id' => $user->id,
+            'kind' => $entry['kind'] ?? 'unknown'
+        ]);
+
+        return $entry;
     }
 
     /**
-     * Read entries from a project's MyHome stream
+     * Read recent entries from MyHome log
      */
     public function read(Project $project, int $limit = 100): Collection
     {
-        $filePath = $this->getMyHomePath($project);
+        $filePath = $this->getMyHomeFilePath($project);
 
         if (!Storage::exists($filePath)) {
             return collect();
@@ -53,164 +56,199 @@ class MyHomeService
 
         $content = Storage::get($filePath);
         $lines = array_filter(explode("\n", $content));
-
-        // Get the last N lines (most recent entries)
+        
+        // Get last N lines (most recent)
         $recentLines = array_slice($lines, -$limit);
-
-        return collect($recentLines)
-            ->map(fn($line) => json_decode($line, true))
-            ->filter()
-            ->reverse()
-            ->values();
+        
+        return collect($recentLines)->map(function ($line) {
+            return json_decode($line, true);
+        })->filter()->values();
     }
 
     /**
-     * Get entries by kind/type
+     * Get entries by kind (type)
      */
     public function getByKind(Project $project, string $kind): Collection
     {
-        return $this->read($project, 1000) // Read more entries for filtering
-            ->where('kind', $kind);
+        return $this->read($project)->filter(function ($entry) use ($kind) {
+            return ($entry['kind'] ?? '') === $kind;
+        });
     }
 
     /**
-     * Search entries by query string
+     * Search entries by text content
      */
     public function search(Project $project, string $query): Collection
     {
-        $query = strtolower($query);
+        return $this->read($project)->filter(function ($entry) use ($query) {
+            $searchableText = $this->getSearchableText($entry);
+            return stripos($searchableText, $query) !== false;
+        });
+    }
+
+    /**
+     * Get task entries
+     */
+    public function getTasks(Project $project): Collection
+    {
+        return $this->getByKind($project, '/task');
+    }
+
+    /**
+     * Get time log entries
+     */
+    public function getTimeLogs(Project $project): Collection
+    {
+        return $this->getByKind($project, '/time');
+    }
+
+    /**
+     * Get file entries
+     */
+    public function getFiles(Project $project): Collection
+    {
+        return $this->getByKind($project, '/file');
+    }
+
+    /**
+     * Get AI interaction entries
+     */
+    public function getAIInteractions(Project $project): Collection
+    {
+        return $this->read($project)->filter(function ($entry) {
+            $kind = $entry['kind'] ?? '';
+            return in_array($kind, ['/ai.prompt', '/ai.response']);
+        });
+    }
+
+    /**
+     * Get project statistics
+     */
+    public function getStats(Project $project): array
+    {
+        $entries = $this->read($project);
         
-        return $this->read($project, 1000)
-            ->filter(function ($entry) use ($query) {
-                $searchText = strtolower(json_encode($entry));
-                return str_contains($searchText, $query);
-            });
-    }
-
-    /**
-     * Get recent activity across all accessible projects for a user
-     */
-    public function getRecentActivity(User $user, int $limit = 50): Collection
-    {
-        $projects = $user->workspaces()
-            ->with('projects')
-            ->get()
-            ->pluck('projects')
-            ->flatten();
-
-        $allEntries = collect();
-
-        foreach ($projects as $project) {
-            $entries = $this->read($project, 20);
-            $allEntries = $allEntries->concat($entries);
-        }
-
-        return $allEntries
-            ->sortByDesc('timestamp')
-            ->take($limit)
-            ->values();
-    }
-
-    /**
-     * Ensure project directory structure exists
-     */
-    private function ensureProjectStructure(Project $project): void
-    {
-        $basePath = $this->getProjectBasePath($project);
-        
-        Storage::makeDirectory($basePath . '/myhome');
-        Storage::makeDirectory($basePath . '/assets');
-        Storage::makeDirectory($basePath . '/metadata');
-    }
-
-    /**
-     * Get the base path for a project
-     */
-    private function getProjectBasePath(Project $project): string
-    {
-        return "projects/{$project->workspace_id}/{$project->id}";
-    }
-
-    /**
-     * Get the MyHome file path for a project
-     */
-    private function getMyHomePath(Project $project): string
-    {
-        return $this->getProjectBasePath($project) . '/myhome/myhome.ndjson';
-    }
-
-    /**
-     * Generate a unique entry ID
-     */
-    private function generateEntryId(): string
-    {
-        return 'mh_' . uniqid() . '_' . time();
-    }
-
-    /**
-     * Add a comment entry
-     */
-    public function addComment(Project $project, User $user, string $content): array
-    {
-        return $this->append($project, $user, [
-            'kind' => 'comment',
-            'content' => $content,
-        ]);
-    }
-
-    /**
-     * Add a file upload entry
-     */
-    public function addFileUpload(Project $project, User $user, string $filename, string $path): array
-    {
-        return $this->append($project, $user, [
-            'kind' => 'file_upload',
-            'filename' => $filename,
-            'file_path' => $path,
-        ]);
-    }
-
-    /**
-     * Add a status change entry
-     */
-    public function addStatusChange(Project $project, User $user, string $oldStatus, string $newStatus): array
-    {
-        return $this->append($project, $user, [
-            'kind' => 'status_change',
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
-        ]);
-    }
-
-    /**
-     * Add a system entry (automated entries)
-     */
-    public function addSystemEntry(Project $project, array $data): array
-    {
-        // Create a system user entry with proper User model structure
-        $timestamp = Carbon::now()->toISOString();
-        
-        $myHomeEntry = [
-            'id' => $this->generateEntryId(),
-            'timestamp' => $timestamp,
-            'user_id' => 0,
-            'user_name' => 'System',
-            'project_id' => $project->id,
-            'workspace_id' => $project->workspace_id,
-            'kind' => 'system',
-            ...$data,
+        $stats = [
+            'total_entries' => $entries->count(),
+            'by_kind' => $entries->groupBy('kind')->map->count(),
+            'total_time_hours' => 0,
+            'recent_activity' => $entries->where('ts', '>=', Carbon::now()->subDays(7)->toISOString())->count(),
         ];
 
-        // Ensure project directory structure exists
-        $this->ensureProjectStructure($project);
+        // Calculate total time logged
+        $timeEntries = $this->getTimeLogs($project);
+        $stats['total_time_hours'] = $timeEntries->sum('hours');
 
-        // Get the MyHome file path
-        $filePath = $this->getMyHomePath($project);
+        return $stats;
+    }
 
-        // Append to NDJSON file
-        $jsonLine = json_encode($myHomeEntry, JSON_UNESCAPED_SLASHES) . "\n";
-        Storage::append($filePath, $jsonLine);
+    /**
+     * Get MyHome file path for a project
+     */
+    private function getMyHomeFilePath(Project $project): string
+    {
+        return "projects/{$project->workspace_id}/{$project->id}/myhome/myhome.ndjson";
+    }
 
-        return $myHomeEntry;
+    /**
+     * Extract searchable text from an entry
+     */
+    private function getSearchableText(array $entry): string
+    {
+        $searchable = [];
+        
+        // Common text fields
+        $textFields = ['text', 'title', 'description', 'prompt', 'content'];
+        foreach ($textFields as $field) {
+            if (isset($entry[$field])) {
+                $searchable[] = $entry[$field];
+            }
+        }
+
+        // Add kind for context
+        if (isset($entry['kind'])) {
+            $searchable[] = $entry['kind'];
+        }
+
+        return implode(' ', $searchable);
+    }
+
+    /**
+     * Create a note entry
+     */
+    public function createNote(Project $project, User $user, string $text): array
+    {
+        return $this->append($project, $user, [
+            'kind' => 'note',
+            'text' => $text,
+        ]);
+    }
+
+    /**
+     * Create a task entry
+     */
+    public function createTask(Project $project, User $user, string $title, ?string $description = null, ?string $due = null, string $status = 'pending'): array
+    {
+        return $this->append($project, $user, [
+            'kind' => '/task',
+            'title' => $title,
+            'description' => $description,
+            'due' => $due,
+            'status' => $status,
+        ]);
+    }
+
+    /**
+     * Create a time log entry
+     */
+    public function createTimeLog(Project $project, User $user, float $hours, string $task, ?string $description = null): array
+    {
+        return $this->append($project, $user, [
+            'kind' => '/time',
+            'hours' => $hours,
+            'task' => $task,
+            'description' => $description,
+        ]);
+    }
+
+    /**
+     * Create a file upload entry
+     */
+    public function createFileEntry(Project $project, User $user, string $path, int $size, string $type): array
+    {
+        return $this->append($project, $user, [
+            'kind' => '/file',
+            'path' => $path,
+            'size' => $size,
+            'type' => $type,
+        ]);
+    }
+
+    /**
+     * Create an AI prompt entry
+     */
+    public function createAIPrompt(Project $project, User $user, string $prompt): array
+    {
+        return $this->append($project, $user, [
+            'kind' => '/ai.prompt',
+            'prompt' => $prompt,
+        ]);
+    }
+
+    /**
+     * Create an AI response entry
+     */
+    public function createAIResponse(Project $project, User $user, string $text, ?array $metadata = null): array
+    {
+        $entry = [
+            'kind' => '/ai.response',
+            'text' => $text,
+        ];
+
+        if ($metadata) {
+            $entry['metadata'] = $metadata;
+        }
+
+        return $this->append($project, $user, $entry);
     }
 }
