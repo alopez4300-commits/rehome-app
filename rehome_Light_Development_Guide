@@ -1,0 +1,519 @@
+# ReHome v2: Light Development Guide
+## Single Admin + AI Agent System (Essentials Only)
+
+> Minimal viable implementation - architecture and dependencies only.
+
+---
+
+## Table of Contents
+
+1. [Core Dependencies](#core-dependencies)
+2. [Architecture Overview](#architecture-overview)
+3. [Database Schema](#database-schema)
+4. [Service Layer](#service-layer)
+5. [API Structure](#api-structure)
+6. [Frontend Structure](#frontend-structure)
+7. [Implementation Phases](#implementation-phases)
+8. [Configuration Files](#configuration-files)
+
+---
+
+## Core Dependencies
+
+### Backend (Laravel 11)
+
+**Essential Packages:**
+```
+laravel/framework: ^11.0
+laravel/sanctum: ^4.0          // SPA authentication
+filament/filament: ^3.0        // Admin panel only
+openai-php/laravel: ^0.10      // AI provider (pick one)
+```
+
+**Development Only:**
+```
+laravel/pint                   // Code formatting
+```
+
+**NO Redis/Queue needed initially** - use `sync` queue driver and file cache.
+
+### Frontend (React + TypeScript)
+
+**Essential Packages:**
+```
+react: ^18.0
+react-router-dom: ^6.0         // SPA routing
+axios: ^1.6                    // HTTP client
+```
+
+**NO WebSocket library needed initially** - add later for streaming.
+
+---
+
+## Architecture Overview
+
+### URL Structure
+
+- `/system` → Filament admin panel (admins only)
+- `/app` → React SPA (everyone after login)
+- `/api/*` → JSON API (Sanctum auth)
+
+### Authentication Flow
+
+1. User logs in via Filament
+2. Redirects to `/app` (SPA)
+3. SPA uses Sanctum cookie authentication
+4. Admins manually type `/system` for admin panel
+
+### File Storage Structure
+
+```
+storage/projects/{workspace_id}/{project_id}/
+  ├── myhome/
+  │   ├── myhome.ndjson              // Main activity stream
+  │   └── ai_conversations.ndjson    // AI chat history
+  ├── assets/                        // User uploads
+  └── metadata/                      // Computed data
+```
+
+### Key Principles
+
+- **No roles table** - just `has_admin_role` boolean on users
+- **No complex permissions** - workspace membership is enough
+- **File-based MyHome** - append-only NDJSON files
+- **AI context from files** - read MyHome + metadata directly
+- **Light by default** - no queues, no Redis, no WebSockets until needed
+
+---
+
+## Database Schema
+
+### Required Tables
+
+**users** (Laravel default + modifications)
+- `has_admin_role` boolean - platform admin flag
+
+**workspaces**
+- `id`, `name`, `owner_id`, `timestamps`
+
+**projects**
+- `id`, `workspace_id`, `name`, `status`, `timestamps`
+
+**workspace_user** (pivot)
+- `workspace_id`, `user_id`, `role` (owner/member/consultant/client)
+
+**agent_threads**
+- `id`, `project_id`, `user_id`, `title`, `timestamps`
+
+**agent_messages**
+- `id`, `thread_id`, `role` (user/assistant), `content`, `timestamps`
+
+**agent_runs** (tracking/cost)
+- `id`, `thread_id`, `status`, `total_tokens`, `cost`, `timestamps`
+
+### Relationships
+
+- User → many Workspaces (through pivot)
+- Workspace → many Projects
+- Project → many AgentThreads
+- AgentThread → many AgentMessages
+- AgentThread → many AgentRuns
+
+---
+
+## Service Layer
+
+### Required Services
+
+**MyHomeService** (`app/Services/MyHomeService.php`)
+- `append()` - add entry to NDJSON file
+- `read()` - get recent entries
+- `getByKind()` - filter by entry type
+- `search()` - simple text search
+
+**AgentService** (`app/Services/Agent/AgentService.php`)
+- `processMessage()` - main orchestration
+- `buildContext()` - compile project context
+- `sendToProvider()` - call OpenAI/Anthropic
+- `saveResponse()` - store AI reply
+
+**ContextBuilder** (`app/Services/Agent/ContextBuilder.php`)
+- Token budget management (50/30/20 split)
+- Load MyHome entries (50%)
+- Load project metadata (30%)
+- Load recent files (20%)
+- Intelligent truncation
+
+**CostTracker** (`app/Services/Agent/CostTracker.php`)
+- Track token usage per run
+- Calculate costs per model
+- Simple rate limiting (5/min, 50/day per user)
+- Budget warnings
+
+**PIIRedactor** (`app/Services/Agent/PIIRedactor.php`)
+- Redact sensitive data based on user role
+- Email/phone patterns
+- Client role sees most redaction
+- Admin sees least redaction
+
+---
+
+## API Structure
+
+### Authentication Routes
+```
+POST /login              // Handled by Filament
+GET  /sanctum/csrf-cookie
+GET  /api/me
+POST /api/logout
+```
+
+### MyHome Routes
+```
+GET  /api/projects/{id}/myhome           // List entries
+POST /api/projects/{id}/myhome           // Add entry
+GET  /api/projects/{id}/myhome/search    // Search entries
+```
+
+### AI Agent Routes
+```
+GET  /api/projects/{id}/agent/threads              // List threads
+POST /api/projects/{id}/agent/threads              // Create thread
+GET  /api/agent/threads/{id}/messages              // Get messages
+POST /api/agent/threads/{id}/messages              // Send message
+```
+
+### Project Routes
+```
+GET  /api/workspaces/{id}/projects       // List projects
+GET  /api/projects/{id}                  // Get project
+```
+
+---
+
+## Frontend Structure
+
+### Pages Required
+
+**Login** → Handled by Filament, redirects to `/app`
+
+**Workspace Dashboard** (`/app`)
+- List user's workspaces
+- Recent activity across projects
+
+**Project View** (`/app/projects/{id}`)
+- MyHome activity feed
+- Quick actions (add note, log time)
+- AI chat interface
+
+**AI Chat** (`/app/projects/{id}/agent`)
+- Message history
+- Input field
+- Context indicators (what AI sees)
+
+### Components Required
+
+**ActivityFeed**
+- Renders MyHome entries
+- Group by date
+- Filter by type
+
+**ChatInterface**
+- Message bubbles
+- Input with submit
+- Loading states
+
+**ProjectSidebar**
+- Navigation
+- Project info
+- Team members
+
+---
+
+## Implementation Phases
+
+### Phase 0: Foundation (Day 1)
+- Install Laravel + Filament
+- Add `has_admin_role` to users
+- Create admin user
+- Configure Sanctum for SPA
+
+**Deliverable:** Admin can login, gets redirected to `/app`
+
+### Phase 1: Admin Panel (Day 1-2)
+- Filament panel at `/system`
+- User resource (with admin toggle)
+- Workspace resource (read-only)
+- Project resource (read-only)
+- Custom login redirect to `/app`
+
+**Deliverable:** Admin panel works, shows data
+
+### Phase 2: MyHome System (Day 2-3)
+- MyHome service (file-based NDJSON)
+- API endpoints for read/write
+- Policy for project access
+- Storage directory structure
+
+**Deliverable:** Can append and read MyHome entries via API
+
+### Phase 3: AI Agent Core (Day 3-5)
+- Agent models (threads, messages, runs)
+- AgentService orchestration
+- ContextBuilder with token budget
+- OpenAI integration
+- CostTracker basics
+
+**Deliverable:** Can send message, get AI response with context
+
+### Phase 4: AI Enhancements (Day 5-6)
+- PIIRedactor for role-based filtering
+- Rate limiting
+- Error handling
+- Cost warnings
+
+**Deliverable:** Production-ready AI system
+
+### Phase 5: React SPA (Day 6-8)
+- Basic routing
+- Sanctum authentication
+- MyHome feed component
+- AI chat interface
+
+**Deliverable:** Functional SPA workspace
+
+### Phase 6: Polish (Day 8-10)
+- Better UI/UX
+- Loading states
+- Error messages
+- Mobile responsive
+
+**Deliverable:** Launch-ready application
+
+---
+
+## Configuration Files
+
+### config/ai.php (Create this)
+```
+provider: openai or anthropic
+model: gpt-4o-mini or claude-3-haiku
+context_budget: 50/30/20 token split
+rate_limits: 5/min, 50/day per user
+costs: per-model pricing
+pii_patterns: email, phone, SSN, etc.
+system_prompts: by role (admin/member/consultant/client)
+```
+
+### .env Additions
+```
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+
+SANCTUM_STATEFUL_DOMAINS=localhost:5173
+SESSION_DOMAIN=localhost
+```
+
+### config/sanctum.php
+- Add frontend URL to stateful domains
+- Enable cookie authentication
+
+### config/cors.php
+- Allow credentials
+- Allow frontend origin
+- Allow cookies
+
+---
+
+## Authorization Pattern
+
+### Gate Before Hook
+```php
+// In AuthServiceProvider
+Gate::before(function ($user, $ability) {
+    if ($user->isAdmin()) {
+        return true;  // Admins bypass all checks
+    }
+});
+```
+
+### Project Access Policy
+- Admin → full access
+- Workspace owner → full access
+- Workspace member → read/write based on role
+- Non-member → no access
+
+### Workspace Roles
+- **owner** → created workspace, full control
+- **member** → can edit projects, add MyHome entries
+- **consultant** → limited view, specific projects
+- **client** → read-only, deliverables only
+
+---
+
+## MyHome Entry Format
+
+All entries in NDJSON format:
+
+```
+{ts, author, author_name, kind, ...}
+```
+
+### Entry Types
+- `note` → simple text note
+- `/task` → task with due date
+- `/time` → time tracking entry
+- `/file` → file upload reference
+- `/ai.prompt` → user question to AI
+- `/ai.response` → AI answer
+- `/status` → project status change
+
+---
+
+## AI Context Building Strategy
+
+### 50% - Recent Messages
+- Last 20-30 MyHome entries
+- Prioritize recent activity
+- Include AI conversation history
+
+### 30% - Project Metadata
+- Active tasks list
+- Team members
+- Project status
+- Important dates
+
+### 20% - File Content
+- Recent document snippets
+- File metadata
+- OCR text if available
+
+### Token Budget Example (8K context)
+- 4,000 tokens → messages/activity
+- 2,400 tokens → tasks/metadata
+- 1,600 tokens → file excerpts
+
+**Drop whole items** when over budget - don't truncate mid-item.
+
+---
+
+## Scaling Path (Future)
+
+### When to Add Queues
+- AI requests taking >3 seconds
+- 10+ concurrent users
+- Need background processing
+
+### When to Add Redis
+- Multiple app servers
+- Need shared cache
+- Session management across servers
+
+### When to Add WebSockets
+- Real-time collaboration needed
+- AI streaming responses desired
+- 50+ active users
+
+### When to Add S3
+- 1GB+ file storage
+- Need CDN for assets
+- Multiple regions
+
+**Start light, scale when metrics demand it.**
+
+---
+
+## Testing Checklist
+
+### Phase 0
+- [ ] Admin user exists with `has_admin_role=true`
+- [ ] Regular user cannot access `/system`
+- [ ] Login redirects to `/app`
+
+### Phase 1
+- [ ] Filament shows users, workspaces, projects
+- [ ] Can toggle admin flag
+- [ ] Cannot access `/system` after logout
+
+### Phase 2
+- [ ] MyHome file created on first append
+- [ ] Can read entries via API
+- [ ] Project policy blocks non-members
+
+### Phase 3
+- [ ] AI responds to simple question
+- [ ] Context includes recent MyHome
+- [ ] Response saved to database
+
+### Phase 4
+- [ ] PII redacted for client role
+- [ ] Rate limit blocks 6th request in 1 minute
+- [ ] Cost calculated correctly
+
+### Phase 5
+- [ ] Can login from SPA
+- [ ] MyHome feed displays
+- [ ] AI chat works
+
+---
+
+## Development Commands (Makefile)
+
+Create these for convenience:
+
+```
+make install    // Fresh install
+make migrate    // Run migrations
+make seed       // Create test data
+make admin      // Create admin user
+make serve      // Start dev servers
+make test       // Run test suite
+```
+
+---
+
+## Production Deployment
+
+### Environment
+- **Render** for Laravel app + workers
+- **PostgreSQL** managed database
+- **S3** for file storage (optional initially)
+- **Resend** for email (optional)
+
+### Required ENV vars
+```
+APP_ENV=production
+APP_DEBUG=false
+DB_CONNECTION=pgsql
+AI_PROVIDER=openai
+OPENAI_API_KEY=...
+```
+
+### Build Process
+1. `composer install --optimize-autoloader --no-dev`
+2. `php artisan config:cache`
+3. `php artisan route:cache`
+4. `php artisan view:cache`
+5. `npm run build` (frontend)
+
+---
+
+## What We're NOT Building
+
+- ❌ Complex role system (use workspace roles)
+- ❌ Real-time WebSockets (sync initially)
+- ❌ Queue workers (sync driver)
+- ❌ Redis caching (file cache)
+- ❌ Email notifications (add later)
+- ❌ File processing pipelines (manual initially)
+- ❌ Advanced search (simple text search)
+- ❌ Multiple AI providers (pick one)
+- ❌ Streaming responses (polling initially)
+- ❌ Mobile apps (web-responsive only)
+
+**Build the minimum that works, then iterate based on real usage.**
+
+---
+
+This is your complete roadmap. Start at Phase 0, follow the checklist, stay light until metrics prove you need more.

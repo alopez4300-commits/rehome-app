@@ -1,0 +1,934 @@
+# ReHome v2: Light Development Guide
+## AI-Centered Project Management Platform (Complete Implementation Plan)
+
+> **Light by default. MyHome system. Single admin role. Built for production.**
+> 
+> A practical, production-minded project management platform with AI-centered chat assistants that understand project context via the MyHome system. Designed to be rebuilt from scratch by AI assistants.
+
+---
+
+## Table of Contents
+
+1. [Project Overview](#project-overview)
+2. [Core Dependencies](#core-dependencies)
+3. [Architecture Overview](#architecture-overview)
+4. [Database Schema](#database-schema)
+5. [Service Layer](#service-layer)
+6. [API Structure](#api-structure)
+7. [Frontend Structure](#frontend-structure)
+8. [Implementation Phases](#implementation-phases)
+9. [Configuration Files](#configuration-files)
+10. [Development Environment](#development-environment)
+11. [Production Deployment](#production-deployment)
+12. [Testing Strategy](#testing-strategy)
+13. [Scaling Path](#scaling-path)
+
+---
+
+## Project Overview
+
+### **Core Philosophy**
+- **Light by default** - No Redis, no queues, polling-first approach
+- **MyHome system** - Append-only NDJSON files as primary source of truth
+- **Single admin role** - Boolean flag instead of complex permissions
+- **AI as enhancement** - Optional assistant, not required for daily use
+- **Build minimum that works** - Iterate based on real usage
+
+### **Key Innovations**
+1. **MyHome System** - Append-only NDJSON activity stream
+2. **Single Admin Role** - Boolean flag instead of complex permissions
+3. **Light Profile** - File cache, file sessions, sync queues
+4. **Context from MyHome** - AI gets project context from activity stream
+5. **Universal Login** - Everyone goes to `/app`, admin types `/system`
+6. **Filament for admin only** - User management & site health monitoring
+7. **SPA for user activity** - All MyHome entries created via React interface
+
+### **Technology Stack**
+- **Backend:** PHP 8.3 + Laravel 11.x + Filament v3
+- **Frontend:** React 18 + TypeScript + Tailwind CSS + Vite
+- **Database:** SQLite (dev) → PostgreSQL (prod)
+- **Storage:** Local filesystem (light profile)
+- **AI:** OpenAI GPT-4o-mini
+- **Email:** Resend
+- **Hosting:** Render
+
+### **Application Surfaces**
+- **`/system`** - Filament admin panel (admin only) - **User management & site health**
+- **`/app`** - React SPA (everyone after login) - **Primary user interface**
+- **`/api/*`** - JSON API (Sanctum authentication)
+
+---
+
+## Core Dependencies
+
+### Backend (Laravel 11)
+
+**Essential Packages:**
+```
+laravel/framework: ^11.0
+laravel/sanctum: ^4.0          // SPA authentication
+filament/filament: ^3.0        // Admin panel only
+openai-php/laravel: ^0.10      // AI provider (pick one)
+```
+
+**Development Only:**
+```
+laravel/pint                   // Code formatting
+```
+
+**NO Redis/Queue needed initially** - use `sync` queue driver and file cache.
+
+### Frontend (React + TypeScript)
+
+**Essential Packages:**
+```
+react: ^18.0
+react-router-dom: ^6.0         // SPA routing
+axios: ^1.6                    // HTTP client
+```
+
+**NO WebSocket library needed initially** - add later for streaming.
+
+---
+
+## Architecture Overview
+
+### URL Structure
+
+- `/system` → Filament admin panel (admins only) - **User management & site health**
+- `/app` → React SPA (everyone after login) - **Primary user interface**
+- `/api/*` → JSON API (Sanctum auth)
+
+### Authentication Flow
+
+1. User logs in via Filament
+2. Redirects to `/app` (SPA)
+3. SPA uses Sanctum cookie authentication
+4. Admins manually type `/system` for admin panel
+
+### File Storage Structure
+
+```
+storage/projects/{workspace_id}/{project_id}/
+  ├── myhome/
+  │   ├── myhome.ndjson              // Main activity stream
+  │   └── ai_conversations.ndjson    // AI chat history
+  ├── assets/                        // User uploads
+  └── metadata/                      // Computed data
+```
+
+### Key Principles
+
+- **No roles table** - just `has_admin_role` boolean on users
+- **No complex permissions** - workspace membership is enough
+- **File-based MyHome** - append-only NDJSON files
+- **AI context from files** - read MyHome + metadata directly
+- **Light by default** - no queues, no Redis, no WebSockets until needed
+- **Filament for admin only** - user management & site health monitoring
+- **SPA for user activity** - all MyHome entries created via React interface
+
+---
+
+## Database Schema
+
+### Core Tables
+- **users** - `id`, `name`, `email`, `password`, `has_admin_role`, `timestamps`
+- **workspaces** - `id`, `name`, `owner_id`, `timestamps`
+- **projects** - `id`, `workspace_id`, `name`, `status`, `timestamps`
+- **workspace_user** - `workspace_id`, `user_id`, `role`, `timestamps`
+
+### Task Management (Phase 3)
+- **tasks** - `id`, `project_id`, `name`, `description`, `status`, `priority`, `due_date`, `created_by`, `visible_to_client`, `order`, `timestamps`
+- **task_user** - `task_id`, `user_id`
+
+### AI Agent System (Phase 4)
+- **agent_threads** - `id`, `project_id`, `user_id`, `title`, `timestamps`
+- **agent_messages** - `id`, `thread_id`, `role`, `content`, `tokens_in`, `tokens_out`, `cost_cents`, `timestamps`
+- **agent_runs** - `id`, `thread_id`, `status`, `total_tokens`, `total_cost_cents`, `started_at`, `finished_at`, `error`
+
+### Relationships
+
+- User → many Workspaces (through pivot)
+- Workspace → many Projects
+- Project → many Tasks (Phase 3)
+- Project → many AgentThreads (Phase 4)
+- AgentThread → many AgentMessages
+- AgentThread → many AgentRuns
+
+---
+
+## Service Layer
+
+### MyHome System (Phase 2)
+
+**MyHomeService** (`app/Services/MyHome/MyHomeService.php`)
+- `append(Project $project, User $user, array $entry): array` - add entry to NDJSON file
+- `read(Project $project, int $limit = 100): Collection` - get recent entries
+- `getByKind(Project $project, string $kind): Collection` - filter by entry type
+- `search(Project $project, string $query): Collection` - simple text search
+
+### AI Agent System (Phase 4)
+
+**AgentService** (`app/Services/Agent/AgentService.php`)
+- `processMessage()` - main orchestration
+- `buildContext()` - compile project context
+- `sendToProvider()` - call OpenAI/Anthropic
+- `saveResponse()` - store AI reply
+
+**ContextBuilder** (`app/Services/Agent/ContextBuilder.php`)
+- Token budget management (60/40 split)
+- Load MyHome entries (60%)
+- Load project metadata (40%)
+- Intelligent truncation
+- PII redaction based on user role
+
+**CostTracker** (`app/Services/Agent/CostTracker.php`)
+- Track token usage per run
+- Calculate costs per model
+- Simple rate limiting (5/min, 50/day per user)
+- Budget warnings
+
+**PIIRedactor** (`app/Services/Agent/PIIRedactor.php`)
+- Redact sensitive data based on user role
+- Email/phone patterns
+- Client role sees most redaction
+- Admin sees least redaction
+
+---
+
+## API Structure
+
+### Authentication
+```
+POST /login              // Handled by Filament
+GET  /sanctum/csrf-cookie
+GET  /api/me
+POST /api/logout
+```
+
+### Core Resources
+```
+GET  /api/workspaces                     // List user's workspaces
+GET  /api/workspaces/{id}/projects       // List workspace projects
+GET  /api/projects/{id}                  // Get project details
+```
+
+### MyHome System (Phase 2)
+```
+GET  /api/projects/{id}/myhome           // List entries
+POST /api/projects/{id}/myhome           // Add entry
+GET  /api/projects/{id}/myhome/search    // Search entries
+```
+
+### Task Management (Phase 3)
+```
+GET  /api/projects/{id}/tasks?group_by=status  // List tasks
+POST /api/projects/{id}/tasks                  // Create task
+PUT  /api/tasks/{id}                           // Update task
+DELETE /api/tasks/{id}                         // Delete task
+PUT  /api/tasks/{id}/status                    // Update task status
+PUT  /api/tasks/{id}/assign                    // Assign users to task
+```
+
+### File Management
+```
+GET  /api/tasks/{id}/files               // List task files
+POST /api/tasks/{id}/files               // Upload file to task
+```
+
+### AI Agent System (Phase 4)
+```
+GET  /api/agent/threads                  // List all threads
+GET  /api/projects/{id}/agent/threads    // List project threads
+POST /api/projects/{id}/agent/threads    // Create thread
+GET  /api/agent/threads/{id}/messages    // Get messages
+POST /api/agent/threads/{id}/messages    // Send message
+```
+
+---
+
+## Frontend Structure
+
+### Pages Required
+
+**Login** → Handled by Filament, redirects to `/app`
+
+**Admin Panel** (`/system`) - **Read-only for site health**
+- User management (CRUD operations)
+- Site health dashboard (user counts, system status)
+- Activity monitoring across all projects
+- **NO entry creation** - just monitoring
+
+**Workspace Dashboard** (`/app`) - **Primary user interface**
+- List user's workspaces
+- Recent activity across projects
+
+**Project View** (`/app/projects/{id}`)
+- MyHome activity feed
+- Quick actions (add note, log time)
+- AI chat interface
+
+**AI Chat** (`/app/projects/{id}/agent`)
+- Message history
+- Input field
+- Context indicators (what AI sees)
+
+### Components Required
+
+**ActivityFeed**
+- Renders MyHome entries
+- Group by date
+- Filter by type
+
+**ChatInterface**
+- Message bubbles
+- Input with submit
+- Loading states
+
+**ProjectSidebar**
+- Navigation
+- Project info
+- Team members
+
+---
+
+## Implementation Phases
+
+### Phase 0: Foundation (Day 1)
+- Install Laravel + Filament
+- Add `has_admin_role` to users
+- Create admin user
+- Configure Sanctum for SPA
+
+**Deliverable:** Admin can login, gets redirected to `/app`
+
+### Phase 1: Admin Panel (Day 1-2)
+- Filament panel at `/system`
+- User resource (with admin toggle)
+- Workspace resource (read-only)
+- Project resource (read-only)
+- Custom login redirect to `/app`
+- Site health dashboard (user counts, activity overview)
+- Read-only MyHome activity view across all projects
+
+**Deliverable:** Admin panel works, shows data, monitors site health
+
+### Phase 2: MyHome System (Day 2-3)
+- MyHome service (file-based NDJSON)
+- API endpoints for read/write
+- Policy for project access
+- Storage directory structure
+- Filament read-only dashboard for site health monitoring
+
+**Deliverable:** Can append and read MyHome entries via API, admin can monitor activity
+
+### Phase 3: Task Management (Day 3-5)
+- Task database schema
+- Task management API
+- Task board UI (Kanban-style)
+- File upload system
+- MyHome integration for task activity
+
+**Deliverable:** Full task management system with board interface
+
+### Phase 4: AI Agent Core (Day 5-7)
+- Agent models (threads, messages, runs)
+- AgentService orchestration
+- ContextBuilder with token budget
+- OpenAI integration
+- CostTracker basics
+
+**Deliverable:** Can send message, get AI response with context
+
+### Phase 5: AI Enhancements (Day 7-8)
+- PIIRedactor for role-based filtering
+- Rate limiting
+- Error handling
+- Cost warnings
+
+**Deliverable:** Production-ready AI system
+
+### Phase 6: React SPA (Day 8-10)
+- Basic routing
+- Sanctum authentication
+- MyHome feed component
+- Task board interface
+- AI chat interface
+
+**Deliverable:** Functional SPA workspace
+
+### Phase 7: Polish (Day 10-12)
+- Better UI/UX
+- Loading states
+- Error messages
+- Mobile responsive
+
+**Deliverable:** Launch-ready application
+
+---
+
+## Development Environment
+
+### Docker Setup (Optional)
+```yaml
+# docker-compose.yml
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.php
+    working_dir: /var/www/html
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      - APP_ENV=local
+      - DB_CONNECTION=sqlite
+      - DB_DATABASE=/var/www/html/database/database.sqlite
+      - CACHE_DRIVER=file
+      - SESSION_DRIVER=file
+      - QUEUE_CONNECTION=sync
+    networks:
+      - rehome
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8000:80"
+    volumes:
+      - ./backend:/var/www/html
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - rehome
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  rehome:
+    driver: bridge
+```
+
+### Makefile Commands
+```makefile
+.DEFAULT_GOAL := help
+.PHONY: help setup up down logs clean restart status
+
+help: ## Show this help message
+	@echo "🚀 ReHome v2 - Development Commands"
+	@echo "=================================="
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+setup: ## Install dependencies & build assets
+	@echo "📦 Installing dependencies..."
+	cd backend && composer install
+	cd frontend && npm install
+	@echo "✅ Setup complete!"
+
+up: ## Start all containers
+	@echo "🐳 Starting containers..."
+	docker compose up -d
+	@echo "✅ Containers started!"
+
+down: ## Stop all containers
+	@echo "🛑 Stopping containers..."
+	docker compose down
+	@echo "✅ Containers stopped!"
+
+logs: ## Tail logs for key services
+	@echo "📜 Tailing logs (Ctrl+C to exit)..."
+	docker compose logs -f app nginx
+
+migrate: ## Run database migrations
+	@echo "🗄️  Running migrations..."
+	docker compose exec app php artisan migrate --force
+	@echo "✅ Migrations complete!"
+
+seed: ## Seed database with test data
+	@echo "🌱 Seeding database..."
+	docker compose exec app php artisan db:seed --force
+	@echo "✅ Database seeded!"
+
+admin: ## Create admin user
+	@echo "👤 Creating admin user..."
+	docker compose exec app php artisan make:filament-user
+	@echo "✅ Admin user created!"
+
+status: ## Show container status
+	@echo "📊 Container Status:"
+	@docker compose ps
+
+clean: ## Clean up containers and volumes
+	@echo "🧹 Cleaning up..."
+	docker compose down -v --remove-orphans
+	docker system prune -f
+```
+
+### Health Check Script
+```bash
+#!/bin/bash
+# scripts/dev/health-check.sh
+
+echo "🔍 ReHome v2 - Health Check"
+echo "=========================="
+
+# Check Docker
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker not found"
+    exit 1
+fi
+
+# Check containers
+echo "📊 Container Status:"
+docker compose ps
+
+# Check Laravel backend
+echo "🔧 Laravel Backend:"
+docker compose exec app php artisan --version
+docker compose exec app php artisan route:list --compact
+
+# Check database
+echo "🗄️  Database:"
+docker compose exec app php artisan migrate:status
+
+echo "✅ Health check complete!"
+```
+
+---
+
+## Configuration Files
+
+### config/ai.php (Create this)
+```
+provider: openai or anthropic
+model: gpt-4o-mini or claude-3-haiku
+context_budget: 50/30/20 token split
+rate_limits: 5/min, 50/day per user
+costs: per-model pricing
+pii_patterns: email, phone, SSN, etc.
+system_prompts: by role (admin/member/consultant/client)
+```
+
+### .env Additions
+```
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+
+SANCTUM_STATEFUL_DOMAINS=localhost:5173
+SESSION_DOMAIN=localhost
+```
+
+### config/sanctum.php
+- Add frontend URL to stateful domains
+- Enable cookie authentication
+
+### config/cors.php
+- Allow credentials
+- Allow frontend origin
+- Allow cookies
+
+---
+
+## Authorization Pattern
+
+### Gate Before Hook
+```php
+// In AuthServiceProvider
+Gate::before(function ($user, $ability) {
+    if ($user->isAdmin()) {
+        return true;  // Admins bypass all checks
+    }
+});
+```
+
+### Project Access Policy
+- Admin → full access
+- Workspace owner → full access
+- Workspace member → read/write based on role
+- Non-member → no access
+
+### Workspace Roles
+- **owner** → created workspace, full control
+- **member** → can edit projects, add MyHome entries
+- **consultant** → limited view, specific projects
+- **client** → read-only, deliverables only
+
+---
+
+## MyHome Entry Format
+
+All entries in NDJSON format:
+
+```
+{ts, author, author_name, kind, ...}
+```
+
+### Entry Types
+- `note` → simple text note
+- `/task` → task with due date
+- `/time` → time tracking entry
+- `/file` → file upload reference
+- `/ai.prompt` → user question to AI
+- `/ai.response` → AI answer
+- `/status` → project status change
+
+---
+
+## AI Context Building Strategy
+
+### 50% - Recent Messages
+- Last 20-30 MyHome entries
+- Prioritize recent activity
+- Include AI conversation history
+
+### 30% - Project Metadata
+- Active tasks list
+- Team members
+- Project status
+- Important dates
+
+### 20% - File Content
+- Recent document snippets
+- File metadata
+- OCR text if available
+
+### Token Budget Example (8K context)
+- 4,000 tokens → messages/activity
+- 2,400 tokens → tasks/metadata
+- 1,600 tokens → file excerpts
+
+**Drop whole items** when over budget - don't truncate mid-item.
+
+---
+
+## Scaling Path (Future)
+
+### When to Add Queues
+- AI requests taking >3 seconds
+- 10+ concurrent users
+- Need background processing
+
+### When to Add Redis
+- Multiple app servers
+- Need shared cache
+- Session management across servers
+
+### When to Add WebSockets
+- Real-time collaboration needed
+- AI streaming responses desired
+- 50+ active users
+
+### When to Add S3
+- 1GB+ file storage
+- Need CDN for assets
+- Multiple regions
+
+**Start light, scale when metrics demand it.**
+
+---
+
+## Testing Strategy
+
+### Phase 0-1: Foundation Testing
+- [ ] Admin user exists with `has_admin_role=true`
+- [ ] Regular user cannot access `/system`
+- [ ] Login redirects to `/app`
+- [ ] Filament shows users, workspaces, projects
+- [ ] Can toggle admin flag
+- [ ] Site health dashboard displays correctly
+- [ ] Cannot access `/system` after logout
+
+### Phase 2: MyHome System Testing
+- [ ] MyHome file created on first append
+- [ ] Can read entries via API
+- [ ] Project policy blocks non-members
+- [ ] Filament read-only dashboard shows activity
+- [ ] Storage directory structure created automatically
+
+### Phase 3: Task Management Testing
+- [ ] Task CRUD operations work
+- [ ] Task board displays correctly
+- [ ] File upload system works
+- [ ] MyHome entries created for task activity
+- [ ] Task assignment system works
+
+### Phase 4: AI Agent Testing
+- [ ] AI responds to simple question
+- [ ] Context includes recent MyHome
+- [ ] Response saved to database
+- [ ] Token usage tracked correctly
+
+### Phase 5: AI Enhancements Testing
+- [ ] PII redacted for client role
+- [ ] Rate limit blocks 6th request in 1 minute
+- [ ] Cost calculated correctly
+- [ ] Error handling works properly
+
+### Phase 6: React SPA Testing
+- [ ] Can login from SPA
+- [ ] MyHome feed displays
+- [ ] Task board interface works
+- [ ] AI chat works
+- [ ] Real-time updates work
+
+### Phase 7: Polish Testing
+- [ ] Mobile responsive design
+- [ ] Loading states work
+- [ ] Error messages display
+- [ ] Performance is acceptable
+
+---
+
+## Development Commands
+
+### Quick Start Commands
+```bash
+# Fresh installation
+make setup
+
+# Start development environment
+make up
+
+# Run migrations
+make migrate
+
+# Create admin user
+make admin
+
+# Seed test data
+make seed
+
+# View logs
+make logs
+
+# Stop environment
+make down
+
+# Clean up
+make clean
+```
+
+### Laravel Commands
+```bash
+# Create admin user
+php artisan app:create-admin-user
+
+# Reset database with test data
+php artisan migrate:fresh
+php artisan app:create-admin-user
+php artisan db:seed --class=TestDataSeeder
+
+# Code formatting
+./vendor/bin/pint
+
+# Start development server
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+### Frontend Commands
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
+
+# Run tests
+npm test
+
+# Lint code
+npm run lint
+```
+
+---
+
+## Production Deployment
+
+### Hosting Platform: Render
+- **Laravel App** - Web service with auto-deploy
+- **PostgreSQL** - Managed database
+- **S3** - File storage (optional initially)
+- **Resend** - Email service (optional)
+
+### Environment Configuration
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://your-app.onrender.com
+
+# Database
+DB_CONNECTION=pgsql
+DB_HOST=your-postgres-host
+DB_DATABASE=your-database
+DB_USERNAME=your-username
+DB_PASSWORD=your-password
+
+# AI Configuration
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sk-...
+
+# Email (Optional)
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.resend.com
+MAIL_PORT=587
+MAIL_USERNAME=resend
+MAIL_PASSWORD=your-resend-key
+MAIL_ENCRYPTION=tls
+
+# Storage
+FILESYSTEM_DISK=local
+# Or S3 for production:
+# FILESYSTEM_DISK=s3
+# AWS_ACCESS_KEY_ID=...
+# AWS_SECRET_ACCESS_KEY=...
+# AWS_DEFAULT_REGION=us-east-1
+# AWS_BUCKET=your-bucket
+```
+
+### Build Process
+```bash
+# Install dependencies
+composer install --optimize-autoloader --no-dev
+
+# Cache configuration
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# Build frontend
+npm run build
+
+# Run migrations
+php artisan migrate --force
+
+# Create admin user
+php artisan app:create-admin-user
+```
+
+### Render Configuration
+```yaml
+# render.yaml
+services:
+  - type: web
+    name: rehome-v2
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DB_CONNECTION
+        value: pgsql
+    buildCommand: |
+      composer install --optimize-autoloader --no-dev
+      php artisan config:cache
+      php artisan route:cache
+      php artisan view:cache
+      npm run build
+    startCommand: php artisan serve --host=0.0.0.0 --port=$PORT
+```
+
+### Dockerfile for Production
+```dockerfile
+FROM php:8.3-fpm-alpine
+
+# Install system dependencies
+RUN apk add --no-cache \
+    nginx \
+    nodejs \
+    npm \
+    postgresql-dev \
+    libzip-dev \
+    zip
+
+# Install PHP extensions
+RUN docker-php-ext-install pdo pdo_pgsql zip
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy application
+COPY . .
+
+# Install dependencies
+RUN composer install --optimize-autoloader --no-dev
+RUN npm install && npm run build
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html
+RUN chmod -R 755 /var/www/html
+
+# Expose port
+EXPOSE 8000
+
+# Start application
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8000"]
+```
+
+---
+
+## What We're NOT Building
+
+- ❌ Complex role system (use workspace roles)
+- ❌ Real-time WebSockets (sync initially)
+- ❌ Queue workers (sync driver)
+- ❌ Redis caching (file cache)
+- ❌ Email notifications (add later)
+- ❌ File processing pipelines (manual initially)
+- ❌ Advanced search (simple text search)
+- ❌ Multiple AI providers (pick one)
+- ❌ Streaming responses (polling initially)
+- ❌ Mobile apps (web-responsive only)
+- ❌ MyHome entry creation in Filament (SPA only)
+- ❌ Complex admin operations (just user management & health monitoring)
+
+**Build the minimum that works, then iterate based on real usage.**
+
+---
+
+## Summary
+
+This is your complete implementation roadmap for ReHome v2. The platform is designed to be:
+
+- **Light by default** - No Redis, no queues, polling-first approach
+- **MyHome-centered** - Append-only NDJSON files as primary source of truth
+- **AI-enhanced** - Optional assistant that understands project context
+- **Production-ready** - Built for real-world usage with proper deployment
+
+### **Key Success Factors**
+
+1. **Start with Phase 0-1** - Build solid foundation first
+2. **Follow the phases** - Don't skip ahead, each phase builds on the previous
+3. **Test thoroughly** - Use the testing checklists for each phase
+4. **Stay light** - Only add complexity when metrics demand it
+5. **Focus on MyHome** - This is your core innovation, make it work well
+
+### **Expected Timeline**
+
+- **Phase 0-1:** 2 days (Foundation + Admin Panel)
+- **Phase 2:** 1 day (MyHome System)
+- **Phase 3:** 2 days (Task Management)
+- **Phase 4:** 2 days (AI Agent Core)
+- **Phase 5:** 1 day (AI Enhancements)
+- **Phase 6:** 2 days (React SPA)
+- **Phase 7:** 2 days (Polish)
+
+**Total: ~12 days for complete implementation**
+
+### **Ready to Start?**
+
+Begin with Phase 0-1 and follow the implementation guide step by step. Each phase has clear deliverables and testing criteria. The foundation is the most important part - get it right and everything else will follow.
+
+**Good luck building ReHome v2! 🚀**
