@@ -2,6 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button/Button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export const DashboardPage: React.FC = () => {
   const { user, workspaces, isAdmin } = useAuth();
@@ -26,42 +28,43 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {user?.name}!
-        </h1>
-        <p className="mt-2 text-gray-600">
-          {getRoleDescription(user?.role || '')}
-        </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">
+            Welcome back, {user?.name}!
+          </CardTitle>
+          <CardDescription>
+            {getRoleDescription(user?.role || '')}
+          </CardDescription>
+        </CardHeader>
         {isAdmin() && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-sm text-red-800">
-              <strong>System Admin:</strong> You have full access to all workspaces and can manage users, workspaces, and projects from the admin panel.
-            </p>
-          </div>
+          <CardContent>
+            <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-md">
+              <p className="text-sm text-destructive">
+                <strong>System Admin:</strong> You have full access to all workspaces and can manage users, workspaces, and projects from the admin panel.
+              </p>
+            </div>
+          </CardContent>
         )}
-      </div>
+      </Card>
 
       {/* Workspaces Section */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Your Workspaces
-          </h2>
-          <p className="mt-1 text-sm text-gray-600">
+      <Card>
+        <CardHeader>
+          <CardTitle>Your Workspaces</CardTitle>
+          <CardDescription>
             {isAdmin() 
               ? 'As an admin, you can access all workspaces in the system.'
               : 'Select a workspace to view and manage your projects.'
             }
-          </p>
-        </div>
-
-        <div className="p-6">
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           {!workspaces || workspaces.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-500">No workspaces available</p>
+              <p className="text-muted-foreground">No workspaces available</p>
               {isAdmin() && (
-                <p className="text-sm text-gray-400 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Create workspaces from the admin panel
                 </p>
               )}
@@ -72,55 +75,63 @@ export const DashboardPage: React.FC = () => {
                 <Link
                   key={workspace.id}
                   to={`/workspaces/${workspace.id}`}
-                  className="block p-4 border border-gray-200 rounded-lg hover:border-amber-300 hover:shadow-md transition-all"
+                  className="block"
                 >
-                  <h3 className="font-medium text-gray-900">{workspace.name}</h3>
-                  {workspace.description && (
-                    <p className="mt-1 text-sm text-gray-600">{workspace.description}</p>
-                  )}
-                  <div className="mt-3 flex items-center justify-between text-sm text-gray-500">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                      {workspace.pivot.role}
-                    </span>
-                    <div className="flex space-x-4">
-                      {workspace.projects_count !== undefined && (
-                        <span>{workspace.projects_count} projects</span>
+                  <Card className="hover:shadow-md transition-all cursor-pointer">
+                    <CardHeader>
+                      <CardTitle className="text-lg">{workspace.name}</CardTitle>
+                      {workspace.description && (
+                        <CardDescription>{workspace.description}</CardDescription>
                       )}
-                      {workspace.members_count !== undefined && (
-                        <span>{workspace.members_count} members</span>
-                      )}
-                    </div>
-                  </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between">
+                        <Badge variant="secondary">
+                          {workspace.pivot.role}
+                        </Badge>
+                        <div className="flex space-x-4 text-sm text-muted-foreground">
+                          {workspace.projects_count !== undefined && (
+                            <span>{workspace.projects_count} projects</span>
+                          )}
+                          {workspace.members_count !== undefined && (
+                            <span>{workspace.members_count} members</span>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </Link>
               ))}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Quick Actions
-        </h2>
-        <div className="flex flex-wrap gap-3">
-          {isAdmin() && (
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => window.open('/system', '_blank')}
-            >
-              Open Admin Panel
+      <Card>
+        <CardHeader>
+          <CardTitle>Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-wrap gap-3">
+            {isAdmin() && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => window.open('/system', '_blank')}
+              >
+                Open Admin Panel
+              </Button>
+            )}
+            <Button variant="primary" size="sm" disabled>
+              Create Project
             </Button>
-          )}
-          <Button variant="primary" size="sm" disabled>
-            Create Project
-          </Button>
-          <Button variant="secondary" size="sm" disabled>
-            Invite Team Member
-          </Button>
-        </div>
-      </div>
+            <Button variant="secondary" size="sm" disabled>
+              Invite Team Member
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 };
