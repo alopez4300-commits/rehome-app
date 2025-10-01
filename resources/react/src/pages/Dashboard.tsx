@@ -40,10 +40,23 @@ export function Dashboard() {
         
         if (response.ok) {
           const data = await response.json()
-          setWorkspaces(data.data)
+          console.log('Workspaces API response:', data)
+          
+          // Extract workspaces array from the correct path
+          const workspacesData = data.data?.workspaces || []
+          if (Array.isArray(workspacesData)) {
+            setWorkspaces(workspacesData)
+          } else {
+            console.error('Workspaces data is not an array:', workspacesData)
+            setWorkspaces([])
+          }
+        } else {
+          console.error('Failed to fetch workspaces:', response.status, response.statusText)
+          setWorkspaces([])
         }
       } catch (error) {
         console.error('Failed to fetch workspaces:', error)
+        setWorkspaces([])
       } finally {
         setIsLoading(false)
       }
