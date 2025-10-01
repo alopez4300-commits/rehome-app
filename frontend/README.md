@@ -1,16 +1,17 @@
 # ReHome v2 Frontend
 
-React SPA with Storybook 8.3 for the ReHome v2 project management platform.
+React SPA with TypeScript for the ReHome v2 project management platform.
 
 ## Features
 
 - **React 18** with TypeScript
-- **Storybook 8.3** for component development
+- **React Router** for navigation
 - **Tailwind CSS** for styling
 - **Vite** for fast development and builds
-- **Vitest** for testing
 - **React Query** for data fetching
-- **React Router** for navigation
+- **Zustand** for state management
+- **Storybook** for component development
+- **Vitest** for testing
 
 ## Getting Started
 
@@ -46,44 +47,78 @@ npm run build
 src/
 ├── components/          # Reusable components
 │   ├── auth/           # Authentication components
-│   ├── myhome/         # MyHome system components
-│   ├── ai/             # AI agent components
-│   └── common/         # Common UI components
+│   ├── common/         # Common UI components
+│   ├── layout/         # Layout components
+│   └── MyHome/         # MyHome system components
+├── contexts/           # React contexts
 ├── hooks/              # Custom React hooks
 ├── pages/              # Page components
-├── contexts/           # React contexts
 ├── services/           # API services
 ├── types/              # TypeScript type definitions
 └── utils/              # Utility functions
 ```
 
-### Component Development
+### Authentication
 
-1. Create component in `src/components/`
-2. Add Storybook story in `*.stories.tsx`
-3. Test component in Storybook
-4. Add to main application
+The frontend integrates with Laravel Sanctum for authentication:
+
+- **Login**: Email/password authentication
+- **Token Management**: Automatic token storage and refresh
+- **Role-based Access**: Admin, owner, member, consultant, client roles
+- **Protected Routes**: Automatic redirect to login for unauthenticated users
+
+### API Integration
+
+All API calls go through the Laravel backend:
+
+```typescript
+// Authentication
+const response = await authService.login({ email, password });
+
+// MyHome API
+const feed = await myhomeService.getFeed(workspaceId, projectId);
+
+// Workspace API
+const workspaces = await workspaceService.getWorkspaces();
+```
+
+### Role-based Features
+
+- **Admin**: Full system access, can access all workspaces
+- **Owner**: Full workspace control and project management
+- **Member**: Standard team member with task and project access
+- **Consultant**: Limited access to assigned projects
+- **Client**: Read-only access to project progress
+
+## Component Development
 
 ### Storybook
 
-Storybook provides an isolated environment for developing and testing components:
+Each component should have a corresponding story file:
 
-```bash
-# Start Storybook
-npm run storybook
+```typescript
+// Button.stories.tsx
+import type { Meta, StoryObj } from '@storybook/react';
+import { Button } from './Button';
 
-# Build Storybook
-npm run build-storybook
+const meta: Meta<typeof Button> = {
+  title: 'Common/Button',
+  component: Button,
+  parameters: {
+    layout: 'centered',
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Primary: Story = {
+  args: {
+    variant: 'primary',
+    children: 'Button',
+  },
+};
 ```
-
-#### Available Addons
-
-- **Essentials** - Controls, actions, viewport, backgrounds
-- **A11y** - Accessibility testing
-- **Interactions** - User interaction testing
-- **Docs** - Component documentation
-- **Themes** - Light/dark theme support
-- **Viewport** - Responsive design testing
 
 ### Testing
 
@@ -96,46 +131,6 @@ npm run test:ui
 
 # Run tests with coverage
 npm run test:coverage
-```
-
-### Linting
-
-```bash
-# Check for linting errors
-npm run lint
-
-# Fix linting errors
-npm run lint:fix
-
-# Type checking
-npm run typecheck
-```
-
-## Integration with Backend
-
-### Authentication
-
-The frontend integrates with Laravel Sanctum for authentication:
-
-```typescript
-// Get CSRF cookie
-await axios.get('/sanctum/csrf-cookie');
-
-// Get current user
-const user = await axios.get('/api/user');
-```
-
-### API Integration
-
-All API calls go through the Laravel backend:
-
-```typescript
-// MyHome API
-const feed = await api.get('/api/projects/1/myhome/feed');
-const note = await api.post('/api/projects/1/myhome/notes', { text: 'Hello' });
-
-// AI Agent API
-const response = await api.post('/api/projects/1/agent/chat', { query: 'Help me' });
 ```
 
 ## Deployment
@@ -152,115 +147,79 @@ npm run build
 Create `.env.local`:
 
 ```env
-REACT_APP_API_URL=http://localhost:8000
-REACT_APP_ADMIN_URL=http://localhost:8000/admin
+VITE_API_URL=http://localhost:8000
+VITE_ADMIN_URL=http://localhost:8000/system
+VITE_APP_NAME=ReHome v2
+VITE_DEBUG=true
 ```
 
-## Storybook Integration
+## Integration with Backend
 
-### Component Stories
+### Authentication Flow
 
-Each component should have a corresponding story file:
+1. User logs in via React form
+2. API returns user data + Bearer token
+3. Token stored in localStorage and axios headers
+4. Protected routes check authentication status
+5. Automatic logout on token expiration
 
-```typescript
-// Button.stories.tsx
-import type { Meta, StoryObj } from '@storybook/react';
-import { Button } from './Button';
+### MyHome Integration
 
-const meta: Meta<typeof Button> = {
-  title: 'Common/Button',
-  component: Button,
-  parameters: {
-    layout: 'centered',
-  },
-  argTypes: {
-    variant: {
-      control: { type: 'select' },
-      options: ['primary', 'secondary', 'danger'],
-    },
-  },
-};
+The MyHome system provides:
 
-export default meta;
-type Story = StoryObj<typeof meta>;
+- **Activity Feed**: Chronological stream of project activity
+- **Entry Types**: Notes, tasks, time logs, file uploads, AI interactions
+- **Real-time Updates**: Polling-based updates (WebSockets planned)
+- **Search**: Full-text search across MyHome entries
 
-export const Primary: Story = {
-  args: {
-    variant: 'primary',
-    children: 'Button',
-  },
-};
+### AI Chat Integration
+
+- **Context-aware**: AI has access to project MyHome data
+- **Role-based PII**: Sensitive data redacted based on user role
+- **Cost Tracking**: Token usage and cost monitoring
+- **Rate Limiting**: Per-user request limits
+
+## Key Pages
+
+- **Dashboard**: Overview of workspaces and recent activity
+- **Workspace**: Workspace details and project list
+- **Project**: Project overview with navigation to features
+- **Task Board**: Kanban-style task management
+- **Activity Feed**: MyHome chronological activity stream
+- **Time Tracking**: Time logging and reports
+- **File Browser**: File management and uploads
+- **AI Chat**: AI assistant for project help
+
+## Development Commands
+
+```bash
+# Development
+npm run dev              # Start dev server
+npm run storybook        # Start Storybook
+npm run build            # Build for production
+npm run preview          # Preview production build
+
+# Testing
+npm run test             # Run tests
+npm run test:ui          # Run tests with UI
+npm run test:coverage    # Run tests with coverage
+
+# Linting
+npm run lint             # Check for linting errors
+npm run lint:fix         # Fix linting errors
+npm run typecheck        # TypeScript type checking
 ```
 
-### Mock Data
+## Technologies Used
 
-Use mock data for stories:
-
-```typescript
-const mockUser = {
-  id: 1,
-  name: 'John Doe',
-  email: 'john@example.com',
-  has_admin_role: false,
-};
-```
-
-### Testing in Storybook
-
-Add interaction tests:
-
-```typescript
-import { userEvent, within } from '@storybook/test';
-
-export const FilledForm: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.type(canvas.getByLabelText('Email'), 'test@example.com');
-  },
-};
-```
-
-## Best Practices
-
-### Component Design
-
-1. **Single Responsibility** - Each component should have one clear purpose
-2. **Composition** - Build complex components from simple ones
-3. **Props Interface** - Define clear TypeScript interfaces
-4. **Accessibility** - Use semantic HTML and ARIA attributes
-
-### Storybook
-
-1. **Story Organization** - Group related components
-2. **Documentation** - Add descriptions and examples
-3. **Testing** - Include interaction tests
-4. **Accessibility** - Use a11y addon
-
-### Performance
-
-1. **Code Splitting** - Use dynamic imports for large components
-2. **Memoization** - Use React.memo for expensive renders
-3. **Bundle Analysis** - Monitor bundle size
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Storybook not starting** - Check Node.js version
-2. **TypeScript errors** - Verify tsconfig.json
-3. **Build failures** - Check for missing dependencies
-4. **Hot reload not working** - Restart development server
-
-### Performance Issues
-
-1. **Slow Storybook** - Reduce addon count
-2. **Large bundle size** - Use dynamic imports
-3. **Memory leaks** - Check component cleanup
-
-## Resources
-
-- [React Documentation](https://react.dev/)
-- [Storybook 8.3 Documentation](https://storybook.js.org/docs/8.3)
-- [Tailwind CSS](https://tailwindcss.com/)
-- [Vite Documentation](https://vitejs.dev/)
-- [ReHome v2 Backend](../README.md)
+- **React 18** - UI library
+- **TypeScript** - Type safety
+- **React Router** - Client-side routing
+- **Tailwind CSS** - Utility-first CSS
+- **Vite** - Build tool and dev server
+- **React Query** - Data fetching and caching
+- **Zustand** - State management
+- **Axios** - HTTP client
+- **Storybook** - Component development
+- **Vitest** - Testing framework
+- **Testing Library** - React testing utilities

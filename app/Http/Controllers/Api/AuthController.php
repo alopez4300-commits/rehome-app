@@ -103,7 +103,12 @@ class AuthController extends Controller
             // Admins see all workspaces
             $workspaces = \App\Models\Workspace::with(['owner', 'projects'])
                 ->withCount(['users', 'projects'])
-                ->get();
+                ->get()
+                ->map(function ($workspace) {
+                    // Add pivot data for admin (acting as owner)
+                    $workspace->pivot = (object) ['role' => 'owner'];
+                    return $workspace;
+                });
         } else {
             // Regular users see only their workspaces
             $workspaces = $user->workspaces()
@@ -114,7 +119,9 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $workspaces
+            'data' => [
+                'workspaces' => $workspaces
+            ]
         ]);
     }
 }
