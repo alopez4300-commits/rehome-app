@@ -6,7 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>ReHome v2 - SPA</title>
     @viteReactRefresh
-    @vite(['resources/react/src/main.tsx'])
+    @vite(['frontend/src/main.tsx'])
 </head>
 <body>
     <div id="root"></div>
