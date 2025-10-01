@@ -31,18 +31,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Check for stored token and validate it
   useEffect(() => {
     const checkAuth = async () => {
+      console.log('AuthContext: Checking authentication...')
       const token = localStorage.getItem('auth_token')
+      console.log('AuthContext: Token found:', !!token)
+      
       if (token) {
         axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
         try {
+          console.log('AuthContext: Making API call to /api/me')
           const response = await axios.get('/api/me')
+          console.log('AuthContext: API response:', response.data)
           setUser(response.data.data.user)
         } catch (error) {
+          console.log('AuthContext: API call failed:', error)
           // Token is invalid, remove it
           localStorage.removeItem('auth_token')
           delete axios.defaults.headers.common['Authorization']
         }
       }
+      console.log('AuthContext: Setting loading to false')
       setIsLoading(false)
     }
     
