@@ -3,7 +3,6 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button/Button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 
@@ -70,7 +69,7 @@ export const LoginPage: React.FC = () => {
             <form className="space-y-6" onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email address</Label>
+                  <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Email address</label>
                   <Input
                     id="email"
                     name="email"
@@ -84,7 +83,7 @@ export const LoginPage: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Password</label>
                   <Input
                     id="password"
                     name="password"
@@ -123,14 +122,14 @@ export const LoginPage: React.FC = () => {
                 Quick Login (Development)
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => handleQuickLogin('alice@admin.com')}
-                  loading={isLoading}
-                >
-                  Admin
-                </Button>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleQuickLogin('alice@admin.com')}
+                      loading={isLoading}
+                    >
+                      Admin
+                    </Button>
                 <Button
                   variant="primary"
                   size="sm"

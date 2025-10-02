@@ -1,4 +1,3 @@
-import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
@@ -12,7 +11,6 @@ import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { TimeTrackingPage } from './pages/TimeTrackingPage';
 import { FileBrowserPage } from './pages/FileBrowserPage';
 import { AIChatPage } from './pages/AIChatPage';
-import { LoadingSpinner } from './components/common/LoadingSpinner';
 
 function App() {
   return (
@@ -53,5 +51,4 @@ function App() {
   );
 }
 
-export { App };
 export default App;

@@ -4,14 +4,14 @@ import { cn } from '@/lib/utils';
 
 export interface ButtonProps extends Omit<ShadcnButtonProps, 'variant'> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'link';
-  size?: 'sm' | 'md' | 'lg' | 'icon';
+      size?: 'sm' | 'default' | 'lg' | 'icon';
   loading?: boolean;
   children: React.ReactNode;
 }
 
 export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
-  size = 'md',
+      size = 'default',
   loading = false,
   disabled,
   className,
@@ -23,8 +23,8 @@ export const Button: React.FC<ButtonProps> = ({
                        variant === 'danger' ? 'destructive' : 
                        variant;
 
-  // Map custom sizes to shadcn sizes
-  const shadcnSize = size === 'md' ? 'default' : size;
+      // Map custom sizes to shadcn sizes
+      const shadcnSize = size;
 
   return (
     <ShadcnButton

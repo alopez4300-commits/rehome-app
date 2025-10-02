@@ -115,13 +115,13 @@ export const DashboardPage: React.FC = () => {
         <CardContent>
           <div className="flex flex-wrap gap-3">
             {isAdmin() && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => window.open('/system', '_blank')}
-              >
-                Open Admin Panel
-              </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={() => window.open('/system', '_blank')}
+                >
+                  Open Admin Panel
+                </Button>
             )}
             <Button variant="primary" size="sm" disabled>
               Create Project
