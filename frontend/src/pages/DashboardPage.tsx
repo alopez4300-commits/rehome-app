@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button/Button';
@@ -7,6 +7,51 @@ import { Badge } from '@/components/ui/badge';
 
 export const DashboardPage: React.FC = () => {
   const { user, workspaces, isAdmin } = useAuth();
+
+  // Debug shadcn/ui components
+  useEffect(() => {
+    console.log('🏠 DashboardPage: shadcn/ui Debug Info');
+    console.log('📦 Card component:', Card);
+    console.log('📦 Badge component:', Badge);
+    console.log('📦 Button component:', Button);
+    console.log('👤 User data:', user);
+    console.log('🏢 Workspaces:', workspaces);
+    
+    // Check if Tailwind classes are applied to cards
+    const welcomeCard = document.querySelector('[data-debug="welcome-card"]');
+    const workspacesCard = document.querySelector('[data-debug="workspaces-card"]');
+    
+    if (welcomeCard) {
+      const styles = window.getComputedStyle(welcomeCard);
+      console.log('🎨 Welcome Card computed styles:', {
+        backgroundColor: styles.backgroundColor,
+        borderRadius: styles.borderRadius,
+        boxShadow: styles.boxShadow,
+        padding: styles.padding
+      });
+    }
+    
+    if (workspacesCard) {
+      const styles = window.getComputedStyle(workspacesCard);
+      console.log('🎨 Workspaces Card computed styles:', {
+        backgroundColor: styles.backgroundColor,
+        borderRadius: styles.borderRadius,
+        boxShadow: styles.boxShadow
+      });
+    }
+    
+    // Check badge styling
+    const badges = document.querySelectorAll('[data-debug="role-badge"]');
+    badges.forEach((badge, index) => {
+      const styles = window.getComputedStyle(badge);
+      console.log(`🏷️ Badge ${index} computed styles:`, {
+        backgroundColor: styles.backgroundColor,
+        color: styles.color,
+        borderRadius: styles.borderRadius,
+        padding: styles.padding
+      });
+    });
+  }, [user, workspaces]);
 
   const getRoleDescription = (role: string) => {
     switch (role) {
@@ -28,7 +73,7 @@ export const DashboardPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Welcome Section */}
-      <Card>
+      <Card data-debug="welcome-card">
         <CardHeader>
           <CardTitle className="text-2xl">
             Welcome back, {user?.name}!
@@ -49,7 +94,7 @@ export const DashboardPage: React.FC = () => {
       </Card>
 
       {/* Workspaces Section */}
-      <Card>
+      <Card data-debug="workspaces-card">
         <CardHeader>
           <CardTitle>Your Workspaces</CardTitle>
           <CardDescription>
@@ -86,7 +131,7 @@ export const DashboardPage: React.FC = () => {
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-center justify-between">
-                        <Badge variant="secondary">
+                        <Badge variant="secondary" data-debug="role-badge">
                           {workspace.pivot.role}
                         </Badge>
                         <div className="flex space-x-4 text-sm text-muted-foreground">

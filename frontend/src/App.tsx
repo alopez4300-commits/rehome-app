@@ -11,6 +11,7 @@ import { ActivityFeedPage } from './pages/ActivityFeedPage';
 import { TimeTrackingPage } from './pages/TimeTrackingPage';
 import { FileBrowserPage } from './pages/FileBrowserPage';
 import { AIChatPage } from './pages/AIChatPage';
+import { ShadcnDebugPanel } from './components/debug/ShadcnDebugPanel';
 
 function App() {
   return (
@@ -46,6 +47,9 @@ function App() {
           {/* Catch all route */}
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
+        
+        {/* Debug Panel - only in development */}
+        {process.env.NODE_ENV === 'development' && <ShadcnDebugPanel />}
       </div>
     </AuthProvider>
   );

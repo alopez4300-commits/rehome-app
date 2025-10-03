@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/Button/Button';
@@ -12,6 +12,26 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Debug shadcn/ui components
+  useEffect(() => {
+    console.log('🎨 LoginPage: shadcn/ui Debug Info');
+    console.log('📦 Card component:', Card);
+    console.log('📦 Input component:', Input);
+    console.log('📦 Button component:', Button);
+    
+    // Check if Tailwind classes are applied
+    const cardElement = document.querySelector('[data-debug="login-card"]');
+    if (cardElement) {
+      const styles = window.getComputedStyle(cardElement);
+      console.log('🎨 Card computed styles:', {
+        backgroundColor: styles.backgroundColor,
+        borderRadius: styles.borderRadius,
+        boxShadow: styles.boxShadow,
+        padding: styles.padding
+      });
+    }
+  }, []);
 
   // Redirect if already logged in
   if (user) {
@@ -56,7 +76,7 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <Card>
+        <Card data-debug="login-card">
           <CardHeader className="text-center">
             <CardTitle className="text-3xl font-extrabold">
               ReHome v2
@@ -79,6 +99,7 @@ export const LoginPage: React.FC = () => {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
+                    data-debug="login-email-input"
                   />
                 </div>
 
