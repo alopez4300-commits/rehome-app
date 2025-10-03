@@ -15,10 +15,20 @@ const queryClient = new QueryClient({
   },
 });
 
+// Determine basename based on environment
+const getBasename = () => {
+  // When served through Laravel at /app, use /app as basename
+  if (window.location.pathname.includes('/app')) {
+    return '/app';
+  }
+  // When running on dev server, no basename needed
+  return '/';
+};
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter basename={getBasename()}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

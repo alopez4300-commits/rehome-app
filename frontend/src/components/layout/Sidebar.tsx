@@ -25,11 +25,6 @@ export const Sidebar: React.FC = () => {
 
   const projectNavigation = projectId ? [
     {
-      name: 'Project Overview',
-      href: `/workspaces/${workspaceId}/projects/${projectId}/overview`,
-      icon: '📊',
-    },
-    {
       name: 'Task Board',
       href: `/workspaces/${workspaceId}/projects/${projectId}/tasks`,
       icon: '📋',
@@ -59,7 +54,7 @@ export const Sidebar: React.FC = () => {
   const adminNavigation = isAdmin() ? [
     {
       name: 'Admin Panel',
-      href: '/system',
+      href: '/admin',
       icon: '⚙️',
       external: true,
     },

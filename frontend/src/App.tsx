@@ -33,9 +33,8 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="workspaces/:workspaceId" element={<WorkspacePage />} />
-            <Route path="workspaces/:workspaceId/projects/:projectId" element={<ProjectPage />}>
-              <Route index element={<Navigate to="overview" replace />} />
-              <Route path="overview" element={<DashboardPage />} />
+            <Route path="workspaces/:workspaceId/projects/:projectId">
+              <Route index element={<Navigate to="tasks" replace />} />
               <Route path="tasks" element={<TaskBoardPage />} />
               <Route path="activity" element={<ActivityFeedPage />} />
               <Route path="time" element={<TimeTrackingPage />} />

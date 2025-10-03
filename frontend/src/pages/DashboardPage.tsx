@@ -163,7 +163,7 @@ export const DashboardPage: React.FC = () => {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => window.open('/system', '_blank')}
+                  onClick={() => window.open('/admin', '_blank')}
                 >
                   Open Admin Panel
                 </Button>
